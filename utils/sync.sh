@@ -1,4 +1,4 @@
-#!bin/bash
+#!/usr/bin/env bash
 set -e
 
 # Constants and default values

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 command=``
 xrandr --current --verbose | grep -sw 'connected' | awk '{print $1;}' |
