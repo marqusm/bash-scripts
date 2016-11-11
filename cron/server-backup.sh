@@ -4,6 +4,9 @@ set -e
 # Params
 DESTINATION=/var/backup
 
+# Constants
+SVN_FOLDER=/srv/svn
+
 # Variable
 TIMESTAMP=$(date +"%Y-%m-%d--%H-%M")
 TEMP_FOLDER=${DESTINATION}/backup-${TIMESTAMP}
@@ -21,7 +24,10 @@ fi
 mkdir ${TEMP_FOLDER}
 mkdir ${TEMP_FOLDER}/svn
 echo "coping files..."
-cp -r /srv/svn/* ${TEMP_FOLDER}/svn
+
+for d in ${SVN_FOLDER}/*/ ; do
+    svnadmin dump ${d} > ${TEMP_FOLDER}/svn/$(basename ${d}).svn.dump
+done
 
 echo "archiving..."
 cd ${TEMP_FOLDER}
