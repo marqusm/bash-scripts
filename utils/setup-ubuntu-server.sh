@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# run this directly from web by running following command
+# curl "https://raw.githubusercontent.com/marqusm/bash-scripts/master/utils/setup-ubuntu-server.sh" | sudo sh
+
 # Set update alias
 sudo echo "" >> /etc/bash.bashrc
 sudo echo "# -------" >> /etc/bash.bashrc
