@@ -19,3 +19,7 @@ sudo echo "\"\eOB\": history-search-forward" >> /etc/inputrc
 
 # Install Joe
 sudo apt install -y joe
+
+# Install Oracle Java 8
+sudo apt install oracle-java8-installer
+sudo apt-get install oracle-java8-set-default
