@@ -1,4 +1,4 @@
-# Media files manager
+# Media filename formatter
 
 
 ## Installation
@@ -28,5 +28,5 @@ py media-files-manager.py
 
 Example command could be:
 ```python
-py media-files-manager.py /home/user/media/photos --execute
+py media-filename-formatter.py /home/user/media/photos --execute
 ```

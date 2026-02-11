@@ -1,5 +1,6 @@
 import argparse
 import re
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from PIL import Image
@@ -25,13 +26,17 @@ class MediaType(Enum):
     TRASH = 'trash'
     UNKNOWN = 'unknown'
 
-
 class Mode(Enum):
     DRAFT = 'draft'
     EXECUTE = 'execute'
 
+class Action(Enum):
+    DELETE = 'delete'
+    RENAME = 'rename'
+
 
 # Classes
+@dataclass
 class Metadata:
     filename: str = None
     extension: str = None
@@ -46,13 +51,11 @@ class Metadata:
     format: str = None
     device: str = None
 
-
-# @dataclass
-# class Dates:
-#     meta_creation: datetime | None
-#     file_name: datetime | None
-#     file_modified: datetime
-#     file_created: datetime
+@dataclass
+class ActionResult:
+    action: Action
+    path: Path
+    new_filename: str | None = None
 
 
 # Functions
@@ -62,7 +65,8 @@ def main():
     args = parse_arguments()
     print(f"Args: {args}")
     mode = Mode.EXECUTE if args.execute else Mode.DRAFT
-    process_all_files(args.path)
+    folder_path = get_folder_path(args.path)
+    process_all_files(folder_path)
     print(f"Script finished successfully: {datetime.now().strftime(DATETIME_FORMAT)}")
 
     # video_path = Path("example.mp4")
@@ -73,23 +77,33 @@ def main():
     # renamed_file = rename_file(video_path, new_name)
     # print(f"Renamed to: {renamed_file}")
 
+def get_folder_path(folder_path):
+    folder_path = Path(folder_path)
+    if not folder_path.exists() or not folder_path.is_dir():
+        raise NotADirectoryError(f"Path is not a directory: {folder_path}")
+    return folder_path
+
+def process_all_files(folder_path):
+    for file in folder_path.iterdir():
+        if file.is_file():
+            process_file(file)
+    # Optional: recursive processing
+    # for file in directory.rglob("*"):
+    #     if file.is_file():
+    #         process_file(file)
+
+def process_file(file_path):
+    media_type = file_type(file_path)
+    if media_type == MediaType.IMAGE:
+        rename_photo(file_path)
+    elif media_type == MediaType.VIDEO:
+        rename_video(file_path)
+    elif media_type == MediaType.TRASH:
+        delete_file(file_path)
+    else:
+        print("Unknown media type: " + file_path)
 
 # Actions
-def rename_file(file_path: str, metadata: Metadata):
-    desired_filename = f"{metadata.date.strftime(FILENAME_FORMAT)}{f'_{metadata.device}' if metadata.device else ''}{metadata.extension}"
-    global mode
-    if desired_filename == metadata.filename:
-        print(f"Skip: {file_path}")
-        return
-
-    if mode == Mode.EXECUTE:
-        file = Path(file_path)
-        new_file = file.parent / desired_filename
-        file.rename(new_file)
-    else:
-        print(f"Rename {file_path} -> {desired_filename}")
-
-
 def delete_file(file_path):
     global mode
     if mode == Mode.EXECUTE:
@@ -97,14 +111,11 @@ def delete_file(file_path):
     else:
         print(f"Delete: {file_path}")
 
-
-# Entity Processors
-def process_photo(file_path):
+def rename_photo(file_path):
     metadata = get_image_metadata(file_path)
     rename_file(file_path, metadata)
 
-
-def process_video(file_path):
+def rename_video(file_path):
     metadata = get_video_metadata(file_path)
     rename_file(file_path, metadata)
     # filename = file_path.name
@@ -121,6 +132,20 @@ def process_video(file_path):
     # else:
     #     print(f"OK {file_path}")
 
+def rename_file(file_path: str, metadata: Metadata):
+    desired_filename = f"{metadata.date.strftime(FILENAME_FORMAT)}{f'_{metadata.device}' if metadata.device else ''}{metadata.extension}"
+    global mode
+    if desired_filename == metadata.filename:
+        print(f"Skip: {file_path}")
+        return
+
+    if mode == Mode.EXECUTE:
+        file = Path(file_path)
+        new_file = file.parent / desired_filename
+        file.rename(new_file)
+    else:
+        print(f"Rename {file_path} -> {desired_filename}")
+
 
 # Helper functions
 def calculate_date(meta: datetime | None, filename: datetime | None, attr_created: datetime, attr_modified: datetime):
@@ -132,7 +157,6 @@ def calculate_date(meta: datetime | None, filename: datetime | None, attr_create
         return ['attr_modified', attr_modified]
     else:
         return ['attr_created', attr_created]
-
 
 def get_date_from_filename(file_path: Path):
     filename = file_path.stem
@@ -147,7 +171,6 @@ def get_date_from_filename(file_path: Path):
             return datetime.strptime(date, date_format[1])
     return None
 
-
 def get_device_code(device_name):
     if device_name in ['Canon PowerShot A60', 'CanonMVI01']:
         return 'CA60'
@@ -156,32 +179,6 @@ def get_device_code(device_name):
     else:
         print(f"WARN: Unknown device name: {device_name}")
         return ''
-
-
-def process_file(file_path):
-    media_type = file_type(file_path)
-    if media_type == MediaType.IMAGE:
-        process_photo(file_path)
-    elif media_type == MediaType.VIDEO:
-        process_video(file_path)
-    elif media_type == MediaType.TRASH:
-        delete_file(file_path)
-    else:
-        print("Unknown media type")
-
-
-def process_all_files(folder_path):
-    folder_path = Path(folder_path)
-    if not folder_path.exists() or not folder_path.is_dir():
-        raise NotADirectoryError(f"Path is not a directory: {folder_path}")
-    for file in folder_path.iterdir():
-        if file.is_file():
-            process_file(file)
-    # Optional: recursive processing
-    # for file in directory.rglob("*"):
-    #     if file.is_file():
-    #         process_file(file)
-
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -195,7 +192,6 @@ def parse_arguments():
     group.add_argument("--execute", action="store_true", help="Perform real actions")
     return parser.parse_args()
 
-
 def file_type(file_path):
     ext = Path(file_path).suffix.lower()
     name = Path(file_path).name
@@ -207,7 +203,6 @@ def file_type(file_path):
         return MediaType.TRASH
     else:
         return MediaType.UNKNOWN
-
 
 def get_video_metadata(file_path):
     cmd = [
@@ -227,7 +222,6 @@ def get_video_metadata(file_path):
     else:
         metadata.device = None
     return metadata
-
 
 def get_image_metadata(file_path):
     metadata = Metadata()
