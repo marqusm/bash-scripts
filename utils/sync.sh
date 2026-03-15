@@ -8,13 +8,28 @@ set -euo pipefail
 # Consider adding variables: REMOVE_SOURCE_FILES
 
 ############################################################
-# Params
+# Config
 ############################################################
-SOURCE="<SOURCE>"
-DESTINATION="<DESTINATION>"
-HI_SPEED_LIMIT="50M"
-LOW_SPEED_LIMIT="1M"
-LOG_FILE="/home/marko/sync_log.out"
+ENV_FILE="$(dirname "$0")/.env"
+
+if [ ! -f "${ENV_FILE}" ]; then
+    echo "Missing config file: ${ENV_FILE}" >&2
+    exit 1
+fi
+
+set -a
+# shellcheck source=/dev/null
+. "${ENV_FILE}"
+set +a
+
+: "${SOURCE:?SOURCE must be set in ${ENV_FILE}}"
+: "${DESTINATION:?DESTINATION must be set in ${ENV_FILE}}"
+
+HI_SPEED_LIMIT="${HI_SPEED_LIMIT:-50M}"
+LOW_SPEED_LIMIT="${LOW_SPEED_LIMIT:-1M}"
+LOG_FILE="${LOG_FILE:-sync_log.out}"
+MAX_AGE="${MAX_AGE:-2d}"
+EXCLUDE="${EXCLUDE:-*.part}"
 
 ############################################################
 
@@ -37,8 +52,8 @@ fi
 rclone copy "$SOURCE" "$DESTINATION" \
   -P --transfers=1 --checkers=1 --multi-thread-streams=0 \
   --bwlimit="$SPEED_LIMIT" \
-  --max-age 2d \
-  --exclude '*.part' \
+  --max-age "$MAX_AGE" \
+  --exclude "$EXCLUDE" \
   2>&1 | tee -a "$LOG_FILE"
 
 exit 0
