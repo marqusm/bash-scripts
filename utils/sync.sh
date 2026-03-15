@@ -1,36 +1,53 @@
-#!/usr/bin/env bash
+#!/usr/bin/bash
 set -e
 
-# Constants and default values
-ROOT_NAME="<ROOT_FOLDER>"
-WORKING_FOLDER_NAME="<WORKING_FOLDER_NAME>"
-FILE_PREFIX="<FILE_PREFIX>"
-FILE_EXTENSION=".dat"
-SERVER_PATH="<SERVER_PATH>"
-PASSWORD="<PASSWORD>"
-BANDWIDTH_LIMIT="<BANDWIDTH_LIMIT>"
-CIPHER_ALGORITHM="AES256"
+############################################################
+# Params
+############################################################
+SOURCE_PORT="<PORT>"
+SOURCE="<SOURCE>"
+DESTINATION="<DESTINATION>"
+HI_SPEED_LIMIT=10000
+LOW_SPEED_LIMIT=10000
+EXCLUDE_TEMP_FILES=TRUE
+REMOVE_SOURCE_FILES=FALSE
+TIMEOUT=10000 # 900 for 15mins and 1200 for 20 mins
+LOGGING=TRUE
 
-# Parameters
-if [ -n "$1" ]
-    then
-        BANDWIDTH_LIMIT=$1
+############################################################
+
+# Check if already running
+RCLONE_OCCURANCES=
+RCLONE_OCCURANCES=$(ps -ax | grep "rclone" | wc -l)
+if [ $RCLONE_OCCURANCES -gt 1 ]
+then
+    echo "Sync script is already running. Running time:"${RUNNING_TIME}"s. Skipping."
+    exit 1
 fi
 
+# Variables
+START_DATE=
+START_DATE_S=
+END_DATE_S=
+DURATION=
 
-FOLDER=${ROOT_NAME}"/"${WORKING_FOLDER_NAME}
-FILE_NAME=${FILE_PREFIX}"-`date +%s`"
-FINAL_NAME=${FILE_NAME}""${FILE_EXTENSION}
+TIME_HOURS=$(eval date +"%H")
+if [ ${TIME_HOURS} -gt 23 ] && [ ${TIME_HOURS} -lt 6 ]
+then SPEED_LIMIT=${HI_SPEED_LIMIT}
+else SPEED_LIMIT=${LOW_SPEED_LIMIT}
+fi
 
-echo "$(date) $FILE_NAME Start"
-echo "$(date) $FILE_NAME Archive"
-cd ${FOLDER}
-tar -cv * | gpg -c --cipher-algo ${CIPHER_ALGORITHM} --verbose --passphrase ${PASSWORD} -o ${ROOT_NAME}"/"${FINAL_NAME}
-# zip -0 -P ${PASSWORD} -r $FILE_NAME *
-# rar a -s -ep1 -m0 -hp${PASSWORD} $FILE_NAME *
-cd ${ROOT_NAME}
-echo "$(date) $FILE_NAME Upload"
-rsync -Pha --bwlimit=${BANDWIDTH_LIMIT} ${FINAL_NAME} ${SERVER_PATH}
-echo "$(date) $FILE_NAME Removing Sync folder content and file"
-rm -rf ${FOLDER}/* ${FINAL_NAME}
-echo "$(date) $FILE_NAME Finished"
+RCLONE_COMMAND="rclone copy outlander:downloads/complete/ /mnt/data/marko/Downloads/Outlander -P --transfers=1 --checkers=1 --multi-thread-streams=0 -
+
+# Run the command
+START_DATE=$(date)
+START_DATE_S=`date +%s`
+echo "Sync started @ "${START_DATE}
+#echo ${RCLONE_COMMAND}
+eval ${RCLONE_COMMAND}
+END_DATE=$(date)
+END_DATE_S=`date +%s`
+DURATION=$((END_DATE_S-START_DATE_S))
+echo "Sync completed in "${DURATION}" seconds"
+
+exit 0
