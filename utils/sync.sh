@@ -31,6 +31,14 @@ LOG_FILE="${LOG_FILE:-sync_log.out}"
 MAX_AGE="${MAX_AGE:-2d}"
 EXCLUDE="${EXCLUDE:-*.part}"
 
+if [ "$#" -ge 1 ]; then
+    MAX_AGE="$1"
+fi
+
+if [ "$#" -ge 2 ]; then
+    SOURCE="$2"
+fi
+
 ############################################################
 
 # Check if already running
