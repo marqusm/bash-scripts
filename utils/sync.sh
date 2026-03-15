@@ -1,53 +1,44 @@
-#!/usr/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
+
+############################################################
+# Readme
+############################################################
+# The script to sync source folder to the destination one, using rclone command.
+# Consider adding variables: REMOVE_SOURCE_FILES
 
 ############################################################
 # Params
 ############################################################
-SOURCE_PORT="<PORT>"
 SOURCE="<SOURCE>"
 DESTINATION="<DESTINATION>"
-HI_SPEED_LIMIT=10000
-LOW_SPEED_LIMIT=10000
-EXCLUDE_TEMP_FILES=TRUE
-REMOVE_SOURCE_FILES=FALSE
-TIMEOUT=10000 # 900 for 15mins and 1200 for 20 mins
-LOGGING=TRUE
+HI_SPEED_LIMIT="50M"
+LOW_SPEED_LIMIT="1M"
+LOG_FILE="/home/marko/sync_log.out"
 
 ############################################################
 
 # Check if already running
-RCLONE_OCCURANCES=
-RCLONE_OCCURANCES=$(ps -ax | grep "rclone" | wc -l)
-if [ $RCLONE_OCCURANCES -gt 1 ]
+RCLONE_OCCURRENCES=$(pgrep -c rclone || true)
+if [ "$RCLONE_OCCURRENCES" -gt 1 ]
 then
-    echo "Sync script is already running. Running time:"${RUNNING_TIME}"s. Skipping."
+    echo "Sync script is already running. Skipping."
     exit 1
 fi
 
-# Variables
-START_DATE=
-START_DATE_S=
-END_DATE_S=
-DURATION=
-
-TIME_HOURS=$(eval date +"%H")
-if [ ${TIME_HOURS} -gt 23 ] && [ ${TIME_HOURS} -lt 6 ]
+# Calculate the speed limit based on the current time
+TIME_HOURS=$(date +"%H")
+if [ "${TIME_HOURS}" -ge 23 ] || [ "${TIME_HOURS}" -lt 6 ]
 then SPEED_LIMIT=${HI_SPEED_LIMIT}
 else SPEED_LIMIT=${LOW_SPEED_LIMIT}
 fi
 
-RCLONE_COMMAND="rclone copy outlander:downloads/complete/ /mnt/data/marko/Downloads/Outlander -P --transfers=1 --checkers=1 --multi-thread-streams=0 -
-
 # Run the command
-START_DATE=$(date)
-START_DATE_S=`date +%s`
-echo "Sync started @ "${START_DATE}
-#echo ${RCLONE_COMMAND}
-eval ${RCLONE_COMMAND}
-END_DATE=$(date)
-END_DATE_S=`date +%s`
-DURATION=$((END_DATE_S-START_DATE_S))
-echo "Sync completed in "${DURATION}" seconds"
+rclone copy "$SOURCE" "$DESTINATION" \
+  -P --transfers=1 --checkers=1 --multi-thread-streams=0 \
+  --bwlimit="$SPEED_LIMIT" \
+  --max-age 2d \
+  --exclude '*.part' \
+  2>&1 | tee -a "$LOG_FILE"
 
 exit 0
