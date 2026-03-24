@@ -42,9 +42,9 @@ fi
 ############################################################
 
 # Check if already running
-RCLONE_OCCURRENCES=$(pgrep -c rclone || true)
-if [ "$RCLONE_OCCURRENCES" -gt 1 ]
-then
+LOCK_FILE="/tmp/sync_script.lock"
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
     echo "Sync script is already running. Skipping."
     exit 1
 fi
