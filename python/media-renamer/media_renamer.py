@@ -197,7 +197,7 @@ def get_device_code(device_name: str, default_device: str = "") -> str | None:
     if device_name in DEVICE_CODES:
         return DEVICE_CODES[device_name]
     print(f"WARN: Unknown device name: {device_name}")
-    return None
+    return device_name
 
 def parse_arguments():
     parser = argparse.ArgumentParser()

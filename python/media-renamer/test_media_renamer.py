@@ -143,7 +143,7 @@ def test_get_device_code_empty():
 
 def test_get_device_code_unknown(capsys):
     result = media_renamer.get_device_code('Nikon D3500')
-    assert result is None
+    assert result == 'Nikon D3500'
     assert "WARN" in capsys.readouterr().out
 
 
