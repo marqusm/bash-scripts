@@ -16,10 +16,10 @@ logger = logging.getLogger(__name__)
 # Constants
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 FILENAME_FORMAT = "%Y-%m-%d_%H-%M-%S"
-IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp'}
-VIDEO_EXTENSIONS = {'.mp4', '.mov', '.avi', '.mkv', '.flv', '.wmv', '.webm'}
 CONFIG_FILE = Path(__file__).resolve().parent / "config.json"
 _config = json.loads(CONFIG_FILE.read_text())
+IMAGE_EXTENSIONS = set(_config["image_extensions"])
+VIDEO_EXTENSIONS = set(_config["video_extensions"])
 DEVICE_CODES = _config["device_codes"]
 DATE_PATTERNS = [
     (re.compile(r"(\d{8}_\d{6})"), "%Y%m%d_%H%M%S"),
@@ -48,14 +48,14 @@ class Action(Enum):
 # Classes
 @dataclass
 class Metadata:
-    filename: str | None = None
-    extension: str | None = None
+    filename: str = ""
+    extension: str = ""
     date_taken: datetime | None = None
     date_filename: datetime | None = None
     date_attr_created: datetime | None = None
     date_attr_modified: datetime | None = None
     date: datetime | None = None
-    device: str | None = None
+    device: str = ""
 
 @dataclass
 class ActionResult:
@@ -117,26 +117,14 @@ def execute_actions(actions: list[ActionResult], mode: Mode) -> tuple[int, int, 
 def process_file(file_path: Path, default_device: str = "") -> ActionResult | None:
     media_type = file_type(file_path)
     if media_type == MediaType.IMAGE:
-        return rename_photo(file_path, default_device)
+        return rename_file(file_path, get_image_metadata(file_path, default_device))
     elif media_type == MediaType.VIDEO:
-        return rename_video(file_path, default_device)
+        return rename_file(file_path, get_video_metadata(file_path, default_device))
     elif media_type == MediaType.TRASH:
-        return delete_file(file_path)
+        return ActionResult(action=Action.DELETE, path=file_path)
     else:
         logger.info(f"Unsupported file type: {file_path}")
         return None
-
-# Actions
-def delete_file(file_path: Path) -> ActionResult:
-    return ActionResult(action=Action.DELETE, path=file_path)
-
-def rename_photo(file_path: Path, default_device: str = "") -> ActionResult | None:
-    metadata = get_image_metadata(file_path, default_device)
-    return rename_file(file_path, metadata)
-
-def rename_video(file_path: Path, default_device: str = "") -> ActionResult | None:
-    metadata = get_video_metadata(file_path, default_device)
-    return rename_file(file_path, metadata)
 
 def rename_file(file_path: Path, metadata: Metadata) -> ActionResult | None:
     base = f"{metadata.date.strftime(FILENAME_FORMAT)}{f'_{metadata.device}' if metadata.device else ''}"
@@ -207,7 +195,7 @@ def get_date_from_filename(file_path: Path) -> datetime | None:
                 continue
     return None
 
-def get_device_code(device_name: str, default_device: str = "") -> str | None:
+def get_device_code(device_name: str, default_device: str = "") -> str:
     if device_name == '':
         return default_device
     if device_name in DEVICE_CODES:
@@ -273,8 +261,6 @@ def get_video_metadata(file_path: Path, default_device: str = "") -> Metadata:
                 metadata.device = get_device_code(device_name, default_device)
             else:
                 metadata.device = default_device
-    if metadata.device is None:
-        metadata.device = default_device
     return resolve_dates(metadata, file_path)
 
 def get_image_metadata(file_path: Path, default_device: str = "") -> Metadata:

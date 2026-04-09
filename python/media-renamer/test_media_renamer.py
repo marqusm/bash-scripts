@@ -22,9 +22,11 @@ def test_process_file_image_returns_action_result(monkeypatch, tmp_path):
     dummy_path = tmp_path / "photo.jpg"
     dummy_path.write_text("x")
 
+    fake_metadata = media_renamer.Metadata(filename="photo.jpg", extension=".jpg", date=datetime(2023, 1, 1), device="X")
     expected = media_renamer.ActionResult(action=media_renamer.Action.RENAME, path=dummy_path, new_filename="new.jpg")
     monkeypatch.setattr(media_renamer, "file_type", lambda _p: media_renamer.MediaType.IMAGE)
-    monkeypatch.setattr(media_renamer, "rename_photo", lambda _p, _d="": expected)
+    monkeypatch.setattr(media_renamer, "get_image_metadata", lambda _p, _d="": fake_metadata)
+    monkeypatch.setattr(media_renamer, "rename_file", lambda _p, _m: expected)
 
     result = media_renamer.process_file(dummy_path)
     assert result == expected
@@ -34,9 +36,11 @@ def test_process_file_video_returns_action_result(monkeypatch, tmp_path):
     dummy_path = tmp_path / "video.mp4"
     dummy_path.write_text("x")
 
+    fake_metadata = media_renamer.Metadata(filename="video.mp4", extension=".mp4", date=datetime(2023, 1, 1), device="X")
     expected = media_renamer.ActionResult(action=media_renamer.Action.RENAME, path=dummy_path, new_filename="new.mp4")
     monkeypatch.setattr(media_renamer, "file_type", lambda _p: media_renamer.MediaType.VIDEO)
-    monkeypatch.setattr(media_renamer, "rename_video", lambda _p, _d="": expected)
+    monkeypatch.setattr(media_renamer, "get_video_metadata", lambda _p, _d="": fake_metadata)
+    monkeypatch.setattr(media_renamer, "rename_file", lambda _p, _m: expected)
 
     result = media_renamer.process_file(dummy_path)
     assert result == expected
@@ -46,12 +50,10 @@ def test_process_file_trash_returns_action_result(monkeypatch, tmp_path):
     dummy_path = tmp_path / "Thumbs.db"
     dummy_path.write_text("x")
 
-    expected = media_renamer.ActionResult(action=media_renamer.Action.DELETE, path=dummy_path)
     monkeypatch.setattr(media_renamer, "file_type", lambda _p: media_renamer.MediaType.TRASH)
-    monkeypatch.setattr(media_renamer, "delete_file", lambda _p: expected)
 
     result = media_renamer.process_file(dummy_path)
-    assert result == expected
+    assert result == media_renamer.ActionResult(action=media_renamer.Action.DELETE, path=dummy_path)
 
 
 def test_process_file_unknown_returns_none(monkeypatch, tmp_path, caplog):
@@ -191,7 +193,7 @@ def test_rename_file_returns_none_when_name_matches(tmp_path):
         filename="2023-04-15_09-30-12.jpg",
         extension=".jpg",
         date=datetime(2023, 4, 15, 9, 30, 12),
-        device=None,
+        device="",
     )
     result = media_renamer.rename_file(file_path, metadata)
     assert result is None
@@ -204,7 +206,7 @@ def test_rename_file_without_device(tmp_path):
         filename="old.jpg",
         extension=".jpg",
         date=datetime(2023, 4, 15, 9, 30, 12),
-        device=None,
+        device="",
     )
     result = media_renamer.rename_file(file_path, metadata)
     assert result is not None
@@ -287,6 +289,58 @@ def test_perform_action_execute_delete_failure(tmp_path):
     file_path = tmp_path / "nonexistent.db"
     result = media_renamer.ActionResult(action=media_renamer.Action.DELETE, path=file_path)
     assert media_renamer.perform_action(result, media_renamer.Mode.EXECUTE) is False
+
+
+# --- collect_actions tests ---
+
+def test_collect_actions_groups_by_type(tmp_path, monkeypatch):
+    img = Image.new('RGB', (1, 1), color='red')
+    img.save(str(tmp_path / "20230415_093012.jpg"))
+    (tmp_path / "Thumbs.db").write_text("x")
+    (tmp_path / "notes.txt").write_text("x")
+
+    monkeypatch.setattr(media_renamer.subprocess, "run", lambda *_, **__: MagicMock(stdout=""))
+
+    actions, skipped = media_renamer.collect_actions(tmp_path)
+    assert skipped == 1
+    action_types = {a.action for a in actions}
+    assert media_renamer.Action.RENAME in action_types
+    assert media_renamer.Action.DELETE in action_types
+
+
+# --- execute_actions tests ---
+
+def test_execute_actions_counts_results(tmp_path):
+    file_to_rename = tmp_path / "old.jpg"
+    file_to_rename.write_text("x")
+    file_to_delete = tmp_path / "Thumbs.db"
+    file_to_delete.write_text("x")
+
+    actions = [
+        media_renamer.ActionResult(action=media_renamer.Action.RENAME, path=file_to_rename, new_filename="new.jpg"),
+        media_renamer.ActionResult(action=media_renamer.Action.DELETE, path=file_to_delete),
+        media_renamer.ActionResult(action=media_renamer.Action.RENAME, path=tmp_path / "nonexistent.jpg", new_filename="x.jpg"),
+    ]
+    renamed, deleted, failed = media_renamer.execute_actions(actions, media_renamer.Mode.EXECUTE)
+    assert renamed == 1
+    assert deleted == 1
+    assert failed == 1
+
+
+# --- recursive tests ---
+
+def test_collect_actions_recursive(tmp_path, monkeypatch):
+    subdir = tmp_path / "sub"
+    subdir.mkdir()
+    img = Image.new('RGB', (1, 1), color='red')
+    img.save(str(tmp_path / "20230415_093012.jpg"))
+    img.save(str(subdir / "20230101_120000.jpg"))
+
+    monkeypatch.setattr(media_renamer.subprocess, "run", lambda *_, **__: MagicMock(stdout=""))
+
+    actions_flat, _ = media_renamer.collect_actions(tmp_path, recursive=False)
+    actions_recursive, _ = media_renamer.collect_actions(tmp_path, recursive=True)
+    assert len(actions_recursive) > len(actions_flat)
 
 
 # --- process_all_files tests ---

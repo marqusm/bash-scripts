@@ -33,16 +33,28 @@ py -m pip install -r requirements.txt
 py media_renamer.py
 ```
 
-| Argument       | Comment                                          |
-|----------------|--------------------------------------------------|
-| arg            | Path                                             |
-| --help         | Help                                             |
-| --draft        | Draft mode                                       |
-| --execute      | Writing mode                                     |
-| --device CODE  | Device suffix to use when not available in metadata |
-| --recursive    | Process subdirectories recursively                  |
+| Argument      | Comment                                             |
+|---------------|-----------------------------------------------------|
+| arg           | Path                                                |
+| --help        | Help                                                |
+| --draft       | Draft mode                                          |
+| --execute     | Writing mode                                        |
+| --device CODE | Device suffix to use when not available in metadata |
+| --recursive   | Process subdirectories recursively                  |
 
 Example command could be:
 ```bash
 py media_renamer.py /home/user/media/photos --execute
 ```
+
+
+## Configuration
+
+Device codes, file extensions, and trash files are configured in `config.json`:
+
+| Key                | Description                                        |
+|--------------------|----------------------------------------------------|
+| `device_codes`     | Maps camera/phone model names to short codes       |
+| `image_extensions` | File extensions treated as images                  |
+| `video_extensions` | File extensions treated as videos                  |
+| `trash_files`      | Filenames to delete (e.g. `Thumbs.db`, `.DS_Store`)|

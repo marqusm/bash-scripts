@@ -11,7 +11,8 @@
     "CRT-NX1": "90Lite",
     "YAL-L21": "Nova5T",
     "moto g75 5G": "MotoG75"
-
   },
+  "image_extensions": [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp"],
+  "video_extensions": [".mp4", ".mov", ".avi", ".mkv", ".flv", ".wmv", ".webm"],
   "trash_files": ["Thumbs.db", ".DS_Store", "desktop.ini"]
 }
