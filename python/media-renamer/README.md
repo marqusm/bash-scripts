@@ -30,7 +30,7 @@ py -m pip install -r requirements.txt
 
 ## Running
 ```bash
-py media-renamer.py
+py media_renamer.py
 ```
 
 | Argument       | Comment                                          |
@@ -44,5 +44,5 @@ py media-renamer.py
 
 Example command could be:
 ```bash
-py media-renamer.py /home/user/media/photos --execute
+py media_renamer.py /home/user/media/photos --execute
 ```
