@@ -15,19 +15,15 @@ DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 FILENAME_FORMAT = "%Y-%m-%d_%H-%M-%S"
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp'}
 VIDEO_EXTENSIONS = {'.mp4', '.mov', '.avi', '.mkv', '.flv', '.wmv', '.webm'}
-DEVICE_CODES = {
-    'Canon PowerShot A60': 'A60',
-    'CanonMVI01': 'A60',
-    'HMA-L29': 'Mate20',
-    'SM-S921B': 'S24',
-    'WDY-LX1': 'X6a',
-}
+CONFIG_FILE = Path(__file__).resolve().parent / "config.json"
+_config = json.loads(CONFIG_FILE.read_text())
+DEVICE_CODES = _config["device_codes"]
 DATE_PATTERNS = [
     (re.compile(r"(\d{8}_\d{6})"), "%Y%m%d_%H%M%S"),
     (re.compile(r"(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})"), "%Y-%m-%d_%H-%M-%S"),
     (re.compile(r"(\d{4}-\d{2}-\d{2} \d{2}_\d{2}_\d{2})"), "%Y-%m-%d %H_%M_%S"),
 ]
-TRASH_FILES = {'Thumbs.db', '.DS_Store', 'desktop.ini'}
+TRASH_FILES = set(_config["trash_files"])
 
 
 # Enums

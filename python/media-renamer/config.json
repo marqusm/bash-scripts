@@ -1,0 +1,17 @@
+{
+  "device_codes": {
+    "Canon PowerShot A60": "A60",
+    "CanonMVI01": "A60",
+    "HMA-L29": "Mate20",
+    "SM-S921B": "S24",
+    "Pixel 7": "Pixel7",
+    "23053RN02Y": "Redmi12",
+    "WDY-LX1": "X6a",
+    "RMO-NX1": "X9a",
+    "CRT-NX1": "90Lite",
+    "YAL-L21": "Nova5T",
+    "moto g75 5G": "MotoG75"
+
+  },
+  "trash_files": ["Thumbs.db", ".DS_Store", "desktop.ini"]
+}
