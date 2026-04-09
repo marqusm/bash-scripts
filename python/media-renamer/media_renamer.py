@@ -1,5 +1,6 @@
 import argparse
 import json
+import logging
 import re
 import subprocess
 from dataclasses import dataclass
@@ -9,6 +10,8 @@ from pathlib import Path
 
 from PIL import Image
 from PIL.ExifTags import TAGS
+
+logger = logging.getLogger(__name__)
 
 # Constants
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -64,15 +67,16 @@ class ActionResult:
 # Functions
 def main():
     start_time = datetime.now()
-    print(f"Starting script: {start_time.strftime(DATETIME_FORMAT)}")
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    logger.info(f"Starting script: {start_time.strftime(DATETIME_FORMAT)}")
     args = parse_arguments()
-    print(f"Args: {args}")
+    logger.info(f"Args: {args}")
     mode = Mode.EXECUTE if args.execute else Mode.DRAFT
     default_device = args.device
     folder_path = get_folder_path(args.path)
     process_all_files(folder_path, mode, default_device, args.recursive)
     elapsed = datetime.now() - start_time
-    print(f"Script finished successfully in {elapsed.total_seconds():.1f}s")
+    logger.info(f"Script finished successfully in {elapsed.total_seconds():.1f}s")
 
 
 def get_folder_path(folder_path: Path) -> Path:
@@ -81,22 +85,34 @@ def get_folder_path(folder_path: Path) -> Path:
     return folder_path
 
 def process_all_files(folder_path: Path, mode: Mode = Mode.DRAFT, default_device: str = "", recursive: bool = False):
+    actions, skipped = collect_actions(folder_path, default_device, recursive)
+    renamed, deleted, failed = execute_actions(actions, mode)
+    logger.info(f"Summary: {renamed} renamed, {deleted} deleted, {skipped} skipped, {failed} failed")
+
+def collect_actions(folder_path: Path, default_device: str = "", recursive: bool = False) -> tuple[list[ActionResult], int]:
     files = folder_path.rglob("*") if recursive else folder_path.iterdir()
-    renamed, deleted, skipped, failed = 0, 0, 0, 0
+    actions = []
+    skipped = 0
     for file in files:
         if file.is_file():
             action = process_file(file, default_device)
             if action is None:
                 skipped += 1
-                continue
-            if perform_action(action, mode):
-                if action.action == Action.RENAME:
-                    renamed += 1
-                elif action.action == Action.DELETE:
-                    deleted += 1
             else:
-                failed += 1
-    print(f"Summary: {renamed} renamed, {deleted} deleted, {skipped} skipped, {failed} failed")
+                actions.append(action)
+    return actions, skipped
+
+def execute_actions(actions: list[ActionResult], mode: Mode) -> tuple[int, int, int]:
+    renamed, deleted, failed = 0, 0, 0
+    for action in actions:
+        if perform_action(action, mode):
+            if action.action == Action.RENAME:
+                renamed += 1
+            elif action.action == Action.DELETE:
+                deleted += 1
+        else:
+            failed += 1
+    return renamed, deleted, failed
 
 def process_file(file_path: Path, default_device: str = "") -> ActionResult | None:
     media_type = file_type(file_path)
@@ -107,7 +123,7 @@ def process_file(file_path: Path, default_device: str = "") -> ActionResult | No
     elif media_type == MediaType.TRASH:
         return delete_file(file_path)
     else:
-        print(f"Unsupported file type: {file_path}")
+        logger.info(f"Unsupported file type: {file_path}")
         return None
 
 # Actions
@@ -143,23 +159,23 @@ def perform_action(result: ActionResult | None, mode: Mode = Mode.DRAFT) -> bool
         return True
 
     if result.action == Action.DELETE:
-        print(f"Delete: {result.path}")
+        logger.info(f"Delete: {result.path}")
         if mode == Mode.EXECUTE:
             try:
                 result.path.unlink()
             except OSError as e:
-                print(f"WARN: Failed to delete {result.path}: {e}")
+                logger.warning(f"Failed to delete {result.path}: {e}")
                 return False
     elif result.action == Action.RENAME:
         if result.new_filename is None:
             return True
-        print(f"Rename {result.path} -> {result.new_filename}")
+        logger.info(f"Rename {result.path} -> {result.new_filename}")
         if mode == Mode.EXECUTE:
             try:
                 new_file = result.path.parent / result.new_filename
                 result.path.rename(new_file)
             except OSError as e:
-                print(f"WARN: Failed to rename {result.path}: {e}")
+                logger.warning(f"Failed to rename {result.path}: {e}")
                 return False
     return True
 
@@ -171,13 +187,13 @@ def is_epoch(dt: datetime) -> bool:
 def calculate_date(meta: datetime | None, filename: datetime | None, attr_created: datetime, attr_modified: datetime) -> datetime:
     if meta and not is_epoch(meta):
         return meta
+    if filename and not is_epoch(filename):
+        return filename
     candidates: list[datetime] = []
     if not is_epoch(attr_created):
         candidates.append(attr_created)
     if not is_epoch(attr_modified):
         candidates.append(attr_modified)
-    if filename and not is_epoch(filename):
-        candidates.append(filename)
     return min(candidates) if candidates else attr_modified
 
 def get_date_from_filename(file_path: Path) -> datetime | None:
@@ -196,7 +212,7 @@ def get_device_code(device_name: str, default_device: str = "") -> str | None:
         return default_device
     if device_name in DEVICE_CODES:
         return DEVICE_CODES[device_name]
-    print(f"WARN: Unknown device name: {device_name}")
+    logger.warning(f"Unknown device name: {device_name}")
     return device_name
 
 def parse_arguments():
@@ -235,14 +251,14 @@ def get_video_metadata(file_path: Path, default_device: str = "") -> Metadata:
     try:
         result = subprocess.run(cmd, capture_output=True, text=True)
     except FileNotFoundError:
-        print(f"WARN: ffprobe not found, skipping metadata for {file_path.name}")
+        logger.warning(f"ffprobe not found, skipping metadata for {file_path.name}")
         metadata.device = default_device
         return resolve_dates(metadata, file_path)
     if result.stdout:
         try:
             data = json.loads(result.stdout)
         except json.JSONDecodeError:
-            print(f"WARN: Invalid ffprobe output for {file_path.name}")
+            logger.warning(f"Invalid ffprobe output for {file_path.name}")
             metadata.device = default_device
             return resolve_dates(metadata, file_path)
         if 'format' in data and 'tags' in data['format']:
@@ -251,7 +267,7 @@ def get_video_metadata(file_path: Path, default_device: str = "") -> Metadata:
                 try:
                     metadata.date_taken = datetime.strptime(tags['creation_time'], "%Y-%m-%dT%H:%M:%S.%fZ")
                 except ValueError:
-                    print(f"WARN: Unexpected creation_time format: {tags['creation_time']}")
+                    logger.warning(f"Unexpected creation_time format: {tags['creation_time']}")
             device_name = tags.get('com.android.model') or tags.get('com.apple.quicktime.model') or tags.get('software')
             if device_name:
                 metadata.device = get_device_code(device_name, default_device)
@@ -275,14 +291,14 @@ def get_image_metadata(file_path: Path, default_device: str = "") -> Metadata:
                         tag = TAGS.get(tag_id, tag_id)
                         exif_dict[tag] = value
             except (AttributeError, ValueError, OSError) as e:
-                print(f"Error reading EXIF: {e}")
+                logger.warning(f"Error reading EXIF: {e}")
     except Exception as e:
-        print(f"WARN: Failed to open image {file_path.name}: {e}")
+        logger.warning(f"Failed to open image {file_path.name}: {e}")
     if 'DateTimeOriginal' in exif_dict:
         try:
             metadata.date_taken = datetime.strptime(exif_dict['DateTimeOriginal'], "%Y:%m:%d %H:%M:%S")
         except ValueError:
-            print(f"WARN: Unexpected DateTimeOriginal format: {exif_dict['DateTimeOriginal']}")
+            logger.warning(f"Unexpected DateTimeOriginal format: {exif_dict['DateTimeOriginal']}")
     if 'Model' in exif_dict:
         metadata.device = get_device_code(exif_dict['Model'], default_device)
     else:

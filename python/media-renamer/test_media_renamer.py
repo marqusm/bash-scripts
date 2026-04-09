@@ -1,10 +1,19 @@
+import logging
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
 from PIL import Image
 
 import media_renamer
+
+pytestmark = pytest.mark.filterwarnings("default")
+
+@pytest.fixture(autouse=True)
+def _capture_logs(caplog):
+    with caplog.at_level(logging.INFO, logger="media_renamer"):
+        yield
 
 
 # --- process_file routing tests ---
@@ -45,16 +54,15 @@ def test_process_file_trash_returns_action_result(monkeypatch, tmp_path):
     assert result == expected
 
 
-def test_process_file_unknown_returns_none(monkeypatch, tmp_path, capsys):
+def test_process_file_unknown_returns_none(monkeypatch, tmp_path, caplog):
     dummy_path = tmp_path / "file.bin"
     dummy_path.write_text("x")
 
     monkeypatch.setattr(media_renamer, "file_type", lambda _p: media_renamer.MediaType.UNKNOWN)
     result = media_renamer.process_file(dummy_path)
 
-    captured = capsys.readouterr()
     assert result is None
-    assert "Unsupported file type" in captured.out
+    assert "Unsupported file type" in caplog.text
 
 
 # --- file_type tests ---
@@ -95,6 +103,14 @@ def test_calculate_date_falls_back_to_filename():
     filename = datetime(2019, 1, 1)
     created = datetime(2022, 1, 1)
     modified = datetime(2021, 1, 1)
+    result = media_renamer.calculate_date(None, filename, created, modified)
+    assert result == filename
+
+
+def test_calculate_date_prefers_filename_over_older_attrs():
+    filename = datetime(2023, 1, 1)
+    created = datetime(2018, 1, 1)
+    modified = datetime(2019, 1, 1)
     result = media_renamer.calculate_date(None, filename, created, modified)
     assert result == filename
 
@@ -141,10 +157,10 @@ def test_get_device_code_empty():
     assert media_renamer.get_device_code('') == ''
 
 
-def test_get_device_code_unknown(capsys):
+def test_get_device_code_unknown(caplog):
     result = media_renamer.get_device_code('Nikon D3500')
     assert result == 'Nikon D3500'
-    assert "WARN" in capsys.readouterr().out
+    assert "Unknown device name" in caplog.text
 
 
 def test_get_device_code_empty_with_custom_default():
@@ -228,16 +244,16 @@ def test_rename_file_handles_multiple_collisions(tmp_path):
 
 # --- perform_action tests ---
 
-def test_perform_action_draft_prints_rename(capsys):
+def test_perform_action_draft_prints_rename(caplog):
     result = media_renamer.ActionResult(action=media_renamer.Action.RENAME, path=Path("/tmp/old.jpg"), new_filename="new.jpg")
     assert media_renamer.perform_action(result, media_renamer.Mode.DRAFT) is True
-    assert "Rename" in capsys.readouterr().out
+    assert "Rename" in caplog.text
 
 
-def test_perform_action_draft_prints_delete(capsys):
+def test_perform_action_draft_prints_delete(caplog):
     result = media_renamer.ActionResult(action=media_renamer.Action.DELETE, path=Path("/tmp/file.db"))
     assert media_renamer.perform_action(result, media_renamer.Mode.DRAFT) is True
-    assert "Delete" in capsys.readouterr().out
+    assert "Delete" in caplog.text
 
 
 def test_perform_action_execute_renames(tmp_path):
@@ -275,7 +291,7 @@ def test_perform_action_execute_delete_failure(tmp_path):
 
 # --- process_all_files tests ---
 
-def test_process_all_files_prints_summary(tmp_path, capsys, monkeypatch):
+def test_process_all_files_prints_summary(tmp_path, caplog, monkeypatch):
     img = Image.new('RGB', (1, 1), color='red')
     img.save(str(tmp_path / "20230415_093012.jpg"))
     (tmp_path / "Thumbs.db").write_text("x")
@@ -284,8 +300,7 @@ def test_process_all_files_prints_summary(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(media_renamer.subprocess, "run", lambda *_, **__: MagicMock(stdout=""))
 
     media_renamer.process_all_files(tmp_path)
-    output = capsys.readouterr().out
-    assert "Summary:" in output
+    assert "Summary:" in caplog.text
 
 
 # --- get_image_metadata tests ---
