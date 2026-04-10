@@ -3,6 +3,8 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from PIL import Image
+
 
 def load_module():
     module_path = Path(__file__).resolve().parents[1] / "media-renamer.py"
@@ -22,7 +24,7 @@ def test_process_file_image_returns_action_result(monkeypatch, tmp_path):
 
     expected = m.ActionResult(action=m.Action.RENAME, path=dummy_path, new_filename="new.jpg")
     monkeypatch.setattr(m, "file_type", lambda _p: m.MediaType.IMAGE)
-    monkeypatch.setattr(m, "rename_photo", lambda _p: expected)
+    monkeypatch.setattr(m, "rename_photo", lambda _p, _d="": expected)
 
     result = m.process_file(dummy_path)
     assert result == expected
@@ -35,7 +37,7 @@ def test_process_file_video_returns_action_result(monkeypatch, tmp_path):
 
     expected = m.ActionResult(action=m.Action.RENAME, path=dummy_path, new_filename="new.mp4")
     monkeypatch.setattr(m, "file_type", lambda _p: m.MediaType.VIDEO)
-    monkeypatch.setattr(m, "rename_video", lambda _p: expected)
+    monkeypatch.setattr(m, "rename_video", lambda _p, _d="": expected)
 
     result = m.process_file(dummy_path)
     assert result == expected
@@ -64,7 +66,7 @@ def test_process_file_unknown_returns_none(monkeypatch, tmp_path, capsys):
 
     captured = capsys.readouterr()
     assert result is None
-    assert "Unknown media type" in captured.out
+    assert "Unsupported file type" in captured.out
 
 
 # --- file_type tests ---
@@ -85,6 +87,8 @@ def test_file_type_video():
 def test_file_type_trash():
     m = load_module()
     assert m.file_type(Path("Thumbs.db")) == m.MediaType.TRASH
+    assert m.file_type(Path(".DS_Store")) == m.MediaType.TRASH
+    assert m.file_type(Path("desktop.ini")) == m.MediaType.TRASH
 
 
 def test_file_type_unknown():
@@ -106,9 +110,9 @@ def test_calculate_date_prefers_meta():
 
 def test_calculate_date_falls_back_to_filename():
     m = load_module()
-    filename = datetime(2021, 1, 1)
+    filename = datetime(2019, 1, 1)
     created = datetime(2022, 1, 1)
-    modified = datetime(2019, 1, 1)
+    modified = datetime(2021, 1, 1)
     result = m.calculate_date(None, filename, created, modified)
     assert result == filename
 
@@ -153,8 +157,8 @@ def test_get_date_from_filename_no_match():
 
 def test_get_device_code_known():
     m = load_module()
-    assert m.get_device_code('Canon PowerShot A60') == 'CA60'
-    assert m.get_device_code('CanonMVI01') == 'CA60'
+    assert m.get_device_code('Canon PowerShot A60') == 'A60'
+    assert m.get_device_code('CanonMVI01') == 'A60'
 
 
 def test_get_device_code_empty():
@@ -165,8 +169,13 @@ def test_get_device_code_empty():
 def test_get_device_code_unknown(capsys):
     m = load_module()
     result = m.get_device_code('Nikon D3500')
-    assert result == ''
+    assert result is None
     assert "WARN" in capsys.readouterr().out
+
+
+def test_get_device_code_empty_with_custom_default():
+    m = load_module()
+    assert m.get_device_code('', 'MyDevice') == 'MyDevice'
 
 
 # --- rename_file tests ---
@@ -214,6 +223,107 @@ def test_rename_file_without_device(tmp_path):
     assert result.new_filename == "2023-04-15_09-30-12.jpg"
 
 
+def test_rename_file_handles_collision(tmp_path):
+    m = load_module()
+    file_path = tmp_path / "old.jpg"
+    file_path.write_text("x")
+    (tmp_path / "2023-04-15_09-30-12_S24.jpg").write_text("x")
+    metadata = m.Metadata(
+        filename="old.jpg",
+        extension=".jpg",
+        date=datetime(2023, 4, 15, 9, 30, 12),
+        device="S24",
+    )
+    result = m.rename_file(file_path, metadata)
+    assert result.new_filename == "2023-04-15_09-30-12_S24_1.jpg"
+
+
+def test_rename_file_handles_multiple_collisions(tmp_path):
+    m = load_module()
+    file_path = tmp_path / "old.jpg"
+    file_path.write_text("x")
+    (tmp_path / "2023-04-15_09-30-12_S24.jpg").write_text("x")
+    (tmp_path / "2023-04-15_09-30-12_S24_1.jpg").write_text("x")
+    metadata = m.Metadata(
+        filename="old.jpg",
+        extension=".jpg",
+        date=datetime(2023, 4, 15, 9, 30, 12),
+        device="S24",
+    )
+    result = m.rename_file(file_path, metadata)
+    assert result.new_filename == "2023-04-15_09-30-12_S24_2.jpg"
+
+
+# --- perform_action tests ---
+
+def test_perform_action_draft_prints_rename(capsys):
+    m = load_module()
+    result = m.ActionResult(action=m.Action.RENAME, path=Path("/tmp/old.jpg"), new_filename="new.jpg")
+    assert m.perform_action(result, m.Mode.DRAFT) is True
+    assert "Rename" in capsys.readouterr().out
+
+
+def test_perform_action_draft_prints_delete(capsys):
+    m = load_module()
+    result = m.ActionResult(action=m.Action.DELETE, path=Path("/tmp/file.db"))
+    assert m.perform_action(result, m.Mode.DRAFT) is True
+    assert "Delete" in capsys.readouterr().out
+
+
+def test_perform_action_execute_renames(tmp_path):
+    m = load_module()
+    file_path = tmp_path / "old.jpg"
+    file_path.write_text("x")
+    result = m.ActionResult(action=m.Action.RENAME, path=file_path, new_filename="new.jpg")
+    assert m.perform_action(result, m.Mode.EXECUTE) is True
+    assert not file_path.exists()
+    assert (tmp_path / "new.jpg").exists()
+
+
+def test_perform_action_execute_deletes(tmp_path):
+    m = load_module()
+    file_path = tmp_path / "Thumbs.db"
+    file_path.write_text("x")
+    result = m.ActionResult(action=m.Action.DELETE, path=file_path)
+    assert m.perform_action(result, m.Mode.EXECUTE) is True
+    assert not file_path.exists()
+
+
+def test_perform_action_none_is_noop():
+    m = load_module()
+    assert m.perform_action(None, m.Mode.EXECUTE) is True
+
+
+def test_perform_action_execute_rename_failure(tmp_path):
+    m = load_module()
+    file_path = tmp_path / "nonexistent.jpg"
+    result = m.ActionResult(action=m.Action.RENAME, path=file_path, new_filename="new.jpg")
+    assert m.perform_action(result, m.Mode.EXECUTE) is False
+
+
+def test_perform_action_execute_delete_failure(tmp_path):
+    m = load_module()
+    file_path = tmp_path / "nonexistent.db"
+    result = m.ActionResult(action=m.Action.DELETE, path=file_path)
+    assert m.perform_action(result, m.Mode.EXECUTE) is False
+
+
+# --- process_all_files tests ---
+
+def test_process_all_files_prints_summary(tmp_path, capsys, monkeypatch):
+    m = load_module()
+    img = Image.new('RGB', (1, 1), color='red')
+    img.save(str(tmp_path / "20230415_093012.jpg"))
+    (tmp_path / "Thumbs.db").write_text("x")
+    (tmp_path / "notes.txt").write_text("x")
+
+    monkeypatch.setattr(m.subprocess, "run", lambda *args, **kwargs: MagicMock(stdout=""))
+
+    m.process_all_files(tmp_path)
+    output = capsys.readouterr().out
+    assert "Summary:" in output
+
+
 # --- get_image_metadata tests ---
 
 def test_get_image_metadata_reads_exif():
@@ -223,14 +333,13 @@ def test_get_image_metadata_reads_exif():
     assert metadata.filename == "01.jpg"
     assert metadata.extension == ".jpg"
     assert metadata.date_taken == datetime(2004, 7, 17, 10, 15, 30)
-    assert metadata.device == "CA60"
+    assert metadata.device == "A60"
     assert metadata.date == datetime(2004, 7, 17, 10, 15, 30)
 
 
 def test_get_image_metadata_falls_back_to_filename_date(tmp_path):
     m = load_module()
     file_path = tmp_path / "20230415_093012.jpg"
-    from PIL import Image
     img = Image.new('RGB', (1, 1), color='red')
     img.save(str(file_path))
 
@@ -266,5 +375,18 @@ def test_get_video_metadata_with_ffprobe_data(tmp_path, monkeypatch):
 
     metadata = m.get_video_metadata(file_path)
     assert metadata.date_taken == datetime(2023, 6, 1, 14, 30, 0)
-    assert metadata.device == "CA60"
+    assert metadata.device == "A60"
     assert metadata.date == datetime(2023, 6, 1, 14, 30, 0)
+
+
+def test_get_video_metadata_ffprobe_missing(tmp_path, monkeypatch):
+    m = load_module()
+    file_path = tmp_path / "20230415_093012.mp4"
+    file_path.write_text("fake video")
+
+    def raise_fnf(*args, **kwargs):
+        raise FileNotFoundError("ffprobe not found")
+    monkeypatch.setattr(m.subprocess, "run", raise_fnf)
+
+    metadata = m.get_video_metadata(file_path)
+    assert metadata.date == datetime(2023, 4, 15, 9, 30, 12)
