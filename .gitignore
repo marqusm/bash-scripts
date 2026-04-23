@@ -1,2 +1,6 @@
+.idea/*
+!.idea/dictionaries/
+!.idea/dictionaries/project.xml
+.claude/
 .idea/
 .claude/
