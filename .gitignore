@@ -2,5 +2,19 @@
 !.idea/dictionaries/
 !.idea/dictionaries/project.xml
 .claude/
-.idea/
-.claude/
+
+# Python
+__pycache__/
+*.pyc
+
+# Env / secrets
+.env
+
+# sync.sh default log
+sync_log.out
+
+# Editor / OS
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
